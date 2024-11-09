@@ -1,8 +1,120 @@
 ---
-title: "Project3"
+title: "Project 3"
+execute: 
+  warning: false
+  message: true
 ---
-Initial Commit
+start by describing what you plan to do (3-4 sentences). end with a description of what you did (3-4 sentences). That is, use words to guide the reader through your analysis.
+Research Question: 
+Using the "College tuition, diversity, and pay" data set, I will be analyzing the differences in cost/tuition between public and private schools. I will filter out the data in order to make a fair comparison between the two categories (e.g. schools in the same region), then compare the difference between their costs. 
+Here is a link to my data set: https://github.com/rfordatascience/tidytuesday/blob/master/data/2020/2020-03-10/readme.md
+
+Here are my research questions:
+Alternative claim: Tuition rates are higher for private universities than for public universities 
+Null claim: Tuition rates do not differ between public and private universities.
 
 ```{r}
-1 + 1
+#| echo: true
+library(tidyverse)
+library(purrr)
+
+tuesdata <- tidytuesdayR::tt_load('2020-03-10')
+tuesdata <- tidytuesdayR::tt_load(2020, week = 11)
+
+
+tuition_cost <- tuesdata$tuition_cost
 ```
+I am only interested in the total cost for students attending schools in-state, in California. This way, the cost-of-living is fairly looked at (since comparing Californiaa schools with Maine schools, for example, would not be fair). 
+```{r}
+library(dplyr)
+
+# Sorting my data:
+CA_schools <- tuition_cost |>
+  select(name, state_code, type, in_state_tuition) |>
+  filter(state_code == "CA")
+
+
+# public schools
+public_schools <- tuition_cost |>
+  select(name, state_code, type, in_state_tuition) |>
+  filter(type == "Public") |>
+  filter(state_code == "CA")
+
+public_mean <- public_schools |>
+  summarize(mean_cost = mean(in_state_tuition, na.rm = TRUE))
+
+#145 total public schools
+public_schools
+round(public_mean)
+
+
+# private schools
+private_schools <- tuition_cost |>
+  select(name, state_code, type, in_state_tuition) |>
+  filter(type == "Private") |>
+  filter(state_code == "CA") 
+
+private_mean <- private_schools |>
+  summarize(mean_cost = mean(in_state_tuition, na.rm = TRUE))
+
+# 94 total private schools
+private_schools
+round(private_mean)
+```
+
+```{r}
+# My function to simulate a random sampling of school's in-state tuition
+
+set.seed(1993)
+
+random_sample <- function(rep, sample_size) {
+  # grabs a slice of schools at 
+  sampled_schools <- CA_schools |>
+    sample_n(size = sample_size, replace = FALSE)
+  
+  # mean for public schools
+  mean_public_tuition <- sampled_schools |>
+    filter(type == "Public") |>
+    summarize(mean_tuition = mean(in_state_tuition, na.rm = TRUE)) |>
+    pull(mean_tuition)
+  
+  # mean for private schools
+  mean_private_tuition <- sampled_schools |>
+    filter(type == "Private") |>
+    summarize(mean_tuition = mean(in_state_tuition, na.rm = TRUE)) |>
+    pull(mean_tuition)
+  
+  difference <- mean_private_tuition - mean_public_tuition
+  return(difference)
+}
+
+# Calculate the difference in the previous observed means
+observed_diff <- as.integer(private_mean - public_mean) 
+
+# 1000 iterations
+num_exper <- 2000
+simulated_differences <- map_dbl(1:num_exper, random_sample, sample_size = 100)
+
+simulated_differences |> 
+  data.frame() |> 
+  ggplot(aes(x = simulated_differences)) + 
+  geom_histogram(binwidth = 500, fill = "pink", color = "white") + 
+  geom_vline(aes(xintercept = observed_diff), color = "red") +
+  labs(x = "The difference of mean cost of attendance betwen Public and Private Universities",
+       title = "Sampling distribution when null hypothesis is true")
+  
+
+p_value <- mean(abs(simulated_differences) >= abs(observed_diff))
+p_value
+```
+This plot shows us the results from randomly shuffling all of the tuition costs between public and private universities, and then measuring their mean difference.
+
+From these data, the observed differences seem to be consistent with the distribution of differences in the null sampling distribution.
+
+There is no strong evidence to reject the null hypothesis.
+
+We can claim that the tuition rates are not higher for private universities than for public universities (p-value = .502).
+
+We achieved this result by filtering for California schools, and then calculating the average mean between private and public schools in California. We then created a random sampling by cutting a slice of elements from the data set of all Californian schools, and randomly shuffling their tuition values. We ran this over 2000 iterations, and found that there is strong evidence for the null hypothesis in this case.
+
+
