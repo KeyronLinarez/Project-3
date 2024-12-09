@@ -4,7 +4,7 @@ execute:
   warning: false
   message: true
 ---
-start by describing what you plan to do (3-4 sentences). end with a description of what you did (3-4 sentences). That is, use words to guide the reader through your analysis.
+
 Research Question: 
 Using the "College tuition, diversity, and pay" data set, I will be analyzing the differences in cost/tuition between public and private schools. I will filter out the data in order to make a fair comparison between the two categories (e.g. schools in the same region), then compare the difference between their costs. 
 Here is a link to my data set: https://github.com/rfordatascience/tidytuesday/blob/master/data/2020/2020-03-10/readme.md
@@ -18,11 +18,12 @@ Null claim: Tuition rates do not differ between public and private universities.
 library(tidyverse)
 library(purrr)
 
-tuesdata <- tidytuesdayR::tt_load('2020-03-10')
-tuesdata <- tidytuesdayR::tt_load(2020, week = 11)
+#tuesdata <- tidytuesdayR::tt_load('2020-03-10')
+#tuesdata <- tidytuesdayR::tt_load(2020, week = 11)
 
 
-tuition_cost <- tuesdata$tuition_cost
+#tuition_cost <- tuesdata$tuition_cost
+tuition_cost <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2020/2020-03-10/tuition_cost.csv')
 ```
 I am only interested in the total cost for students attending schools in-state, in California. This way, the cost-of-living is fairly looked at (since comparing Californiaa schools with Maine schools, for example, would not be fair). 
 ```{r}
@@ -31,69 +32,136 @@ library(dplyr)
 # Sorting my data:
 CA_schools <- tuition_cost |>
   select(name, state_code, type, in_state_tuition) |>
-  filter(state_code == "CA")
+  filter(state_code == "CA") |>
+  filter(type %in% c("Public", "Private"))
 
-
+CA_schools 
 # public schools
-public_schools <- tuition_cost |>
-  select(name, state_code, type, in_state_tuition) |>
-  filter(type == "Public") |>
-  filter(state_code == "CA")
+#public_schools <- tuition_cost |>
+#  select(name, state_code, type, in_state_tuition) |>
+#  filter(type == "Public") |>
+#  filter(state_code == "CA")
 
-public_mean <- public_schools |>
-  summarize(mean_cost = mean(in_state_tuition, na.rm = TRUE))
+#public_mean <- public_schools |>
+#  summarize(mean_cost = mean(in_state_tuition, na.rm = TRUE))
 
 #145 total public schools
-public_schools
-round(public_mean)
+#public_schools
+#round(public_mean)
 
 
 # private schools
-private_schools <- tuition_cost |>
-  select(name, state_code, type, in_state_tuition) |>
-  filter(type == "Private") |>
-  filter(state_code == "CA") 
+#private_schools <- tuition_cost |>
+#  select(name, state_code, type, in_state_tuition) |>
+#  filter(type == "Private") |>
+#  filter(state_code == "CA") 
 
-private_mean <- private_schools |>
-  summarize(mean_cost = mean(in_state_tuition, na.rm = TRUE))
+#private_mean <- private_schools |>
+#  summarize(mean_cost = mean(in_state_tuition, na.rm = TRUE))
 
 # 94 total private schools
-private_schools
-round(private_mean)
+#private_schools
+#round(private_mean)
 ```
 
 ```{r}
 # My function to simulate a random sampling of school's in-state tuition
 
-set.seed(1993)
+# average
+avg_cost <- CA_schools |>
+  group_by(type) |>
+  summarize(avg_cost = mean(in_state_tuition))
 
-random_sample <- function(rep, sample_size) {
-  # grabs a slice of schools at 
-  sampled_schools <- CA_schools |>
-    sample_n(size = sample_size, replace = FALSE)
-  
-  # mean for public schools
-  mean_public_tuition <- sampled_schools |>
-    filter(type == "Public") |>
-    summarize(mean_tuition = mean(in_state_tuition, na.rm = TRUE)) |>
-    pull(mean_tuition)
-  
-  # mean for private schools
-  mean_private_tuition <- sampled_schools |>
-    filter(type == "Private") |>
-    summarize(mean_tuition = mean(in_state_tuition, na.rm = TRUE)) |>
-    pull(mean_tuition)
-  
-  difference <- mean_private_tuition - mean_public_tuition
-  return(difference)
+avg_diff <- CA_schools |> 
+  group_by(type) |> 
+  summarize(avg_cost = mean(in_state_tuition)) |> 
+  summarize(ave_diff = diff(avg_cost))
+
+avg_diff_val <- abs(avg_diff$ave_diff[1])
+
+avg_diff_val
+#########################################################
+
+perm_data <- function(rep, data){
+  CA_schools |>
+    select(type, in_state_tuition) |> 
+    mutate(perm_type = sample(type)) |> 
+    group_by(perm_type) |> 
+    dplyr::summarize(perm_cost = mean(in_state_tuition, na.rm = TRUE)) |>
+    summarize(diff_perm = diff(perm_cost), rep = rep)
 }
 
-# Calculate the difference in the previous observed means
-observed_diff <- as.integer(private_mean - public_mean) 
+#map(1:10, perm_data, data = avg_diff) |> 
+#  list_rbind()
+
+set.seed(1993)
+# 1000 iterations
+num_exper <- 1000
+simulated_differences <- map(1:num_exper, perm_data, data = avg_diff) |> 
+  list_rbind()
+
+simulated_differences
+#simulated_differences |>
+#  ggplot(aes(x = diff_perm)) +   # Use diff_perm for the x-axis
+#  geom_histogram(binwidth = 500, fill = "pink", color = "white") +   # Customize histogram
+#  labs(
+#    x = "Difference of Mean Cost of Attendance",
+ #   title = "Sampling Distribution of Permuted Differences"
+  #)
+
+
+simulated_differences |> 
+  data.frame() |> 
+  ggplot(aes(x = diff_perm)) + 
+  geom_histogram(binwidth = 500, fill = "pink", color = "white") + 
+  geom_vline(xintercept = avg_diff_val, color = "red") + 
+  labs(x = "The difference of mean cost of attendance betwen Public and Private Universities",
+       title = "Sampling Distribution of Permuted Differences")
+  
+perm_stats |> 
+  summarize(p_val_ave = mean(diff_perm > avg_diff_val))
+perm_stats
+
+#########################################################
+
+
+# permute on private / publuc
+# generates a single random sample
+null_sample <- CA_schools |>
+  mutate(perm_type = sample(type)) |>
+  group_by(perm_type) |>
+  dplyr::summarize(perm_cost = mean(in_state_tuition, na.rm = TRUE)) |>
+  summarize(diff_perm = diff(perm_cost))
+
+# look at difference between average, and this code ^^^^
+
+# generate a null distribution
+perm_data <- function(rep, sample_size, avg_diff) {
+  # Sample the data
+  sampled_data <- CA_schools |> sample_n(sample_size)
+  
+  # Permute types and calculate permuted difference
+  perm_results <- sampled_data |>
+    mutate(perm_type = sample(type)) |>
+    group_by(perm_type) |>
+    dplyr::summarize(perm_cost = mean(in_state_tuition, na.rm = TRUE)) |>
+    summarize(diff_perm = diff(perm_cost))
+  
+  # Calculate the difference between permuted and average difference
+  perm_results <- perm_results |>
+    mutate(diff_from_avg = diff_perm - avg_diff, rep = rep)
+  
+  return(perm_results)
+}
+# make a histogram of these differences
+# we don't want both, we want difference
+set.seed(1993)
 
 # 1000 iterations
-num_exper <- 2000
-simulated_differences <- map_dbl(1:num_exper, random_sample, sample_size = 100)
+num_exper <- 1000
+#simulated_differences <- map_dbl(1:num_exper, random_sample, sample_size = 100)
+#simulated_differences <- map_dbl(1:num_exper, perm_data, sample_size = 100)
+simulated_results <- map_df(1:num_exper, ~perm_data(rep = .x, sample_size = 100, avg_diff = avg_diff))
 
 simulated_differences |> 
   data.frame() |> 
@@ -106,6 +174,34 @@ simulated_differences |>
 
 p_value <- mean(abs(simulated_differences) >= abs(observed_diff))
 p_value
+
+#random_sample <- function(rep, sample_size) {
+  # grabs a slice of schools at 
+#  sampled_schools <- CA_schools |>
+#    sample_n(size = sample_size, replace = FALSE)
+  
+  # mean for public schools
+#  mean_public_tuition <- sampled_schools |>
+#    filter(type == "Public") |>
+#    summarize(mean_tuition = mean(in_state_tuition, na.rm = TRUE)) |>
+#    pull(mean_tuition)
+  
+  # mean for private schools
+#  mean_private_tuition <- sampled_schools |>
+#    filter(type == "Private") |>
+  #  summarize(mean_tuition = mean(in_state_tuition, na.rm = TRUE)) |>
+  #  pull(mean_tuition)
+  
+  #difference <- mean_private_tuition - mean_public_tuition
+  #return(difference)
+#}
+
+# Calculate the difference in the previous observed means
+#observed_diff <- as.integer(private_mean - public_mean) 
+#observed_diff <- as.integer(avg_sample - null_sample) 
+
+
+
 ```
 This plot shows us the results from randomly shuffling all of the tuition costs between public and private universities, and then measuring their mean difference.
 
